@@ -40,9 +40,7 @@ class LogReg:
     """Logistic Regression problem class"""
 
     def __init__(self):
-        self._theta1 = 0
-        self._theta2 = 1
-        self.sigx = 2
+        pass
 
     def get_data(self, n_samples=100):
         r"""
@@ -54,9 +52,7 @@ class ICA:
     """Independent Components Analysis problem class"""
 
     def __init__(self):
-        self._theta1 = 0
-        self._theta2 = 1
-        self.sigx = 2
+        pass
 
     def get_data(self, n_samples=1000):
         r"""
