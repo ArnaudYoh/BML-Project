@@ -3,6 +3,7 @@
 from torch.optim.optimizer import Optimizer
 from torch.autograd import Variable
 import torch
+import numpy as np
 
 class SGLD(Optimizer):
     """Optimizer based on Langevin Dynamics"""
@@ -21,6 +22,12 @@ class SGLD(Optimizer):
         }
 
         super(SGLD, self).__init__(params, args)
+
+    def __setstate__(self, state):
+        super(SGLD, self).__setstate__(state)
+        for group in self.param_groups:
+            group.setdefault('nesterov', False)
+
 
     def step(self, closure=None):
 
@@ -60,3 +67,20 @@ def get_kl_divergence(weights, prior, varpost):
     varpost_lik = varpost_loglik.exp()
 
     return (varpost_lik * (varpost_loglik - prior_loglik)).sum()
+
+
+def to_variable(var=(), cuda=True, volatile=False):
+    out = []
+    for v in var:
+
+        if isinstance(v, np.ndarray):
+            v = torch.from_numpy(v).type(torch.FloatTensor)
+
+        if not v.is_cuda and cuda:
+            v = v.cuda()
+
+        if not isinstance(v, Variable):
+            v = Variable(v, volatile=volatile)
+
+        out.append(v)
+    return out
