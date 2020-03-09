@@ -5,6 +5,7 @@ from torch.autograd import Variable
 import torch
 import numpy as np
 
+
 class SGLD(Optimizer):
     """Optimizer based on Langevin Dynamics"""
 
@@ -16,18 +17,17 @@ class SGLD(Optimizer):
 
         self.weight_decay = weight_decay
 
-        args = {
-            lr: lr,
-            weight_decay: weight_decay,
-        }
+        defaults = dict(
+            lr=lr,
+            weight_decay=weight_decay,
+        )
 
-        super(SGLD, self).__init__(params, args)
+        super(SGLD, self).__init__(params, defaults)
 
     def __setstate__(self, state):
         super(SGLD, self).__setstate__(state)
         for group in self.param_groups:
             group.setdefault('nesterov', False)
-
 
     def step(self, closure=None):
 
