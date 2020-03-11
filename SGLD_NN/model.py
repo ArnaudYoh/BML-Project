@@ -127,11 +127,12 @@ if __name__ == "__main__":
     # Define the learning environment
     best_net, best_loss = None, float('inf')
     num_nets = 100
-    mix_epochs, burnin_epochs = 50, 3000
+    mix_epochs, burnin_epochs = 100, 3000
     num_epochs = mix_epochs * num_nets + burnin_epochs
 
+    # Here we define the number of batches we want to use to train the model
     # nos_batches = [1, 2, 5, 10, 25, 50, 100]
-    nos_batches = [40]
+    nos_batches = [7]
 
     final_scores = list()
 
@@ -145,7 +146,9 @@ if __name__ == "__main__":
         batches = [(x_train[i: min(i + batch_size, nb_train - 1)],
                     y_train[i:  min(i + batch_size, nb_train - 1)]) for i in range(0, nb_train, batch_size)]
 
-        l_r_lin_space = np.linspace(1e-4, 1e-4, num_epochs)
+        # Here we define the sequence of learning rates that we will use for training the model
+        # Note that we want the sequence to go towards 0.
+        l_r_lin_space = np.linspace(5e-5, 5e-5, num_epochs)
 
         net = Langevin_Wrapper(input_dim=1, output_dim=1, no_units=200, learn_rates=l_r_lin_space,
                                batch_size=batch_size, init_log_noise=0, weight_decay=1)
