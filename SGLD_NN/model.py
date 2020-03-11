@@ -1,6 +1,7 @@
 """Model using SGLD"""
 
-from SGLD_NN.utils import SGLD, log_gaussian_loss, to_variable
+from SGLD_NN.utils import SGLD, log_gaussian_loss, to_variable, draw_train_data, draw_learned_dist, \
+    draw_loss_over_iteration
 import torch.nn as nn
 import torch
 import numpy as np
@@ -16,6 +17,8 @@ device = torch.device
 
 
 class Langevin_Layer(nn.Module):
+    """Layer whose weights and biases are close to 0"""
+
     def __init__(self, input_dim, output_dim):
         super(Langevin_Layer, self).__init__()
         self.input_dim = input_dim
@@ -29,6 +32,8 @@ class Langevin_Layer(nn.Module):
 
 
 class Langevin_Model(nn.Module):
+    """2 Layer Model based on the Langevin Layers """
+
     def __init__(self, input_dim, output_dim, num_units, init_log_noise):
         super(Langevin_Model, self).__init__()
 
@@ -55,9 +60,12 @@ class Langevin_Model(nn.Module):
 
 
 class Langevin_Wrapper:
-    def __init__(self, input_dim, output_dim, no_units, learn_rate, batch_size, init_log_noise,
+    """Container for the Langevin Model that applies SGLD"""
+
+    def __init__(self, input_dim, output_dim, no_units, learn_rates, batch_size, init_log_noise,
                  weight_decay):
-        self.learn_rate = learn_rate
+        self.learn_rates = learn_rates
+        self.weight_decay = weight_decay
         self.batch_size = batch_size
 
         self.network = Langevin_Model(input_dim=input_dim,
@@ -68,24 +76,28 @@ class Langevin_Wrapper:
         if torch.device == "cuda":
             self.network.to(device)
 
-        self.optimizer = SGLD(self.network.parameters(), lr=self.learn_rate, weight_decay=weight_decay)
+        self.count = 0
+
         self.loss_func = log_gaussian_loss
 
     def fit(self, x, y):
+        optimizer = SGLD(self.network.parameters(), lr=self.learn_rates[self.count], weight_decay=self.weight_decay)
+
         x, y = to_variable(var=(x, y), cuda=torch.device == "cuda")
 
         # reset gradient and total loss
-        self.optimizer.zero_grad()
+        optimizer.zero_grad()
         output = self.network(x)
         loss = self.loss_func(output, y, torch.exp(self.network.log_noise), 1)
 
         loss.backward()
-        self.optimizer.step()
+        optimizer.step()
 
         return loss
 
 
 if __name__ == "__main__":
+    # Generate the data
     np.random.seed(2)
     no_points = 400
     lengthscale = 1
@@ -110,16 +122,20 @@ if __name__ == "__main__":
     x_train, y_train = zip(*to_shuffle)
     x_train, y_train = np.array(x_train), np.array(y_train)
 
+    draw_train_data(x_train, y_train)
+
+    # Define the learning environment
     best_net, best_loss = None, float('inf')
     num_nets = 100
-    mix_epochs, burnin_epochs = 15, 100
+    mix_epochs, burnin_epochs = 50, 3000
     num_epochs = mix_epochs * num_nets + burnin_epochs
 
-    nos_batches = [1, 2, 5, 10, 25, 50, 100, 250]
-    #nos_batches = [250]
+    # nos_batches = [1, 2, 5, 10, 25, 50, 100]
+    nos_batches = [40]
 
     final_scores = list()
 
+    # Run for various batches sizes (or number of batches)
     for no_batch in nos_batches:
 
         print("\nUsing {} batches".format(no_batch))
@@ -129,19 +145,19 @@ if __name__ == "__main__":
         batches = [(x_train[i: min(i + batch_size, nb_train - 1)],
                     y_train[i:  min(i + batch_size, nb_train - 1)]) for i in range(0, nb_train, batch_size)]
 
-        l_r = 1e-4 / no_batch
+        l_r_lin_space = np.linspace(1e-4, 1e-4, num_epochs)
 
-        net = Langevin_Wrapper(input_dim=1, output_dim=1, no_units=200, learn_rate=l_r,
+        net = Langevin_Wrapper(input_dim=1, output_dim=1, no_units=200, learn_rates=l_r_lin_space,
                                batch_size=batch_size, init_log_noise=0, weight_decay=1)
 
         dir_name = './SGLD_NN/fig_' + str(no_batch) + 'batch'
         if not os.path.exists(dir_name):
             os.mkdir(dir_name)
 
-        train_losses = []
+        train_losses = [[] for _ in range(no_batch)]
         secs = []
         nets = []
-        record_period = 25
+        record_period = 2
 
         start = time.time()
 
@@ -151,21 +167,20 @@ if __name__ == "__main__":
             for x_batch, y_batch in batches:
                 losses.append(net.fit(x_train, y_train).cpu().data.numpy())
             batch_mean_loss = np.mean(losses)
+            net.count += 1
 
             if i % record_period == 0:
-                print('Epoch: %4d, Train loss = %8.3f' % (i, batch_mean_loss))
-                train_losses.append(batch_mean_loss)
+                # print('Epoch: %4d, Train loss = %8.3f' % (i, batch_mean_loss))
+                for j in range(no_batch):
+                    train_losses[j].append(losses[j])
                 secs.append(time.time() - start)
-
-            if i == num_epochs:
-                final_scores.append(batch_mean_loss)
 
             if i % mix_epochs == 0 and i > burnin_epochs:
                 nets.append(copy.deepcopy(net.network))
 
             if i % 500 == 0 and i > burnin_epochs and get_figs:
 
-                print("Using %d networks for prediction" % len(nets))
+                # print("Using %d networks for prediction" % len(nets))
                 samples = []
                 noises = []
                 for network in nets:
@@ -184,59 +199,9 @@ if __name__ == "__main__":
                 epistemic = (samples.var(axis=0) ** 0.5).reshape(-1)  # Error from approximation of the model
                 total_unc = (aleatoric ** 2 + epistemic ** 2) ** 0.5  # Geometric averaging
 
-                c = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
-                     '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
+                draw_learned_dist(x_train, y_train, means, aleatoric, total_unc, dir_name, i)
 
-                f, ax = plt.subplots()
-                plt.style.use('default')
-                plt.scatter(x_train, y_train, s=10, marker='x', color='black', alpha=0.5, label='samples')
-                plt.fill_between(np.linspace(-5, 5, means.shape[0]), means + aleatoric, means + total_unc, color=c[0],
-                                 alpha=0.3,
-                                 label='Epistemic + Aleatoric')
-                # plt.fill_between(np.linspace(-5, 5, means.shape[0]), means - total_unc, means - aleatoric, color=c[0],
-                #                 alpha=0.3, )
-                #plt.fill_between(np.linspace(-5, 5, means.shape[0]), means - epistemic, means + epistemic, color=c[1],
-                #                 alpha=0.4,
-                #                 label='Epistemic')
-                plt.fill_between(np.linspace(-5, 5, means.shape[0]), means - aleatoric, means + aleatoric, color=c[2],
-                                 alpha=0.4,
-                                 label='Aleatoric')
-                plt.plot(np.linspace(-5, 5, means.shape[0]), means, color='black', linewidth=1,
-                         label='mean')
-                ax.legend()
-                plt.xlim([-5, 5])
-                plt.ylim([-5, 7])
-                plt.xlabel('$x$', fontsize=30)
-                plt.title('SGLD', fontsize=40)
-                plt.tick_params(labelsize=30)
-                plt.xticks(np.arange(-4, 5, 2))
-                plt.yticks(np.arange(-4, 7, 2))
-                plt.gca().set_yticklabels([])
-                plt.gca().yaxis.grid(alpha=0.3)
-                plt.gca().xaxis.grid(alpha=0.3)
-
-                plt.savefig(dir_name + '/sgld' + str(i) + '.pdf', bbox_inches='tight')
-                plt.close()
-
-        plt.figure(figsize=(8, 7))
-        plt.style.use('default')
-        plt.scatter(secs, train_losses, s=10, marker='o', color='blue', alpha=0.5, label='loss')
-        plt.xlabel('secs', fontsize=20)
-        plt.title('Train Loss over time', fontsize=30)
-        plt.ylim((-400, 400))
-
-        plt.savefig(dir_name + '/train_loss_time' + str(no_batch) +'.pdf')
-        plt.close()
-
-        plt.figure(figsize=(8, 7))
-        plt.style.use('default')
-        plt.scatter(range(1, num_epochs + 1, record_period), train_losses, s=10, marker='o', color='blue', alpha=0.5, label='loss')
-        plt.xlabel('Epoch', fontsize=20)
-        plt.title('Train Loss over # of Epochs', fontsize=30)
-        plt.ylim((-400, 400))
-
-        plt.savefig(dir_name + '/train_loss_iteration' + str(no_batch) + '.pdf')
-        plt.close()
+        draw_loss_over_iteration(train_losses, no_batch, num_epochs, dir_name, record_period)
 
     for no_batch, final_score in zip(nos_batches, final_scores):
         print("For {} batches we have {} at the end".format(no_batch, final_score))
