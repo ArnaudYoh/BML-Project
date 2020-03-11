@@ -76,11 +76,11 @@ def to_variable(var=(), cuda=True, volatile=False):
         if isinstance(v, np.ndarray):
             v = torch.from_numpy(v).type(torch.FloatTensor)
 
-        if not v.is_cuda and cuda:
-            v = v.cuda()
-
         if not isinstance(v, Variable):
             v = Variable(v, volatile=volatile)
+
+        if cuda and not v.is_cuda:
+            v = v.cuda()
 
         out.append(v)
     return out

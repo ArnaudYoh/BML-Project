@@ -30,9 +30,8 @@ class SimpleDemo:
         data = np.zeros(n_samples)
 
         for i in range(n_samples):
-            data[i] = 1/2 * np.random.normal(self._theta1, self.sigx) + \
-                      1/2*np.random.normal(self._theta1, self.sigx)
-
+            data[i] = 1 / 2 * np.random.normal(self._theta1, self.sigx) + \
+                      1 / 2 * np.random.normal(self._theta1, self.sigx)
         return data
 
 
@@ -47,6 +46,7 @@ class LogReg:
         Gets n data points from the a9a dataset (Lin. et al, 2008)
         """
         pass
+
 
 class ICA:
     """Independent Components Analysis problem class"""
